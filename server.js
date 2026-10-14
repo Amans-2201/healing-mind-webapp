@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const crypto = require("node:crypto");
 require("dotenv").config();
 const { Pool } = require("pg");
 
@@ -32,11 +33,22 @@ const config = {
   endTime: process.env.DAILY_END_TIME || "17:00",
   intervalMinutes: Number(process.env.SLOT_INTERVAL_MINUTES || 60),
   paymentUrl: process.env.PAYMENT_URL || "",
+  therapistPassword: process.env.THERAPIST_PASSWORD || "",
 };
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "10kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/api/therapist", (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store");
+  next();
+});
+
+const sessionSecret = crypto.randomBytes(32);
+const loginAttempts = new Map();
+const therapistSessionCookie = "therapist_session";
+const therapistSessionDurationMs = 12 * 60 * 60 * 1000;
 
 function isValidDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -99,6 +111,79 @@ function localDateTimeForZone(date) {
   };
 }
 
+function getTherapistSessionExpiry(request) {
+  const cookieHeader = request.headers.cookie || "";
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(`${therapistSessionCookie}=`));
+  if (!sessionCookie) return null;
+
+  const cookieValue = sessionCookie.slice(therapistSessionCookie.length + 1);
+  const match = /^(\d+)\.([A-Za-z0-9_-]+)$/.exec(cookieValue);
+  if (!match) return null;
+  const [, expiry, signature] = match;
+  const expiryTime = Number(expiry);
+  if (!Number.isSafeInteger(expiryTime) || expiryTime <= Date.now()) return null;
+
+  const expectedSignature = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(String(expiryTime))
+    .digest("base64url");
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const signatureBuffer = Buffer.from(signature);
+  if (
+    expectedBuffer.length !== signatureBuffer.length ||
+    !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)
+  ) {
+    return null;
+  }
+  return expiryTime;
+}
+
+function setTherapistSessionCookie(response) {
+  const expiry = Date.now() + therapistSessionDurationMs;
+  const signature = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(String(expiry))
+    .digest("base64url");
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  response.setHeader(
+    "Set-Cookie",
+    `${therapistSessionCookie}=${expiry}.${signature}; Path=/api/therapist; HttpOnly; SameSite=Strict; Max-Age=${therapistSessionDurationMs / 1000}${secure}`,
+  );
+}
+
+function clearTherapistSessionCookie(response) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  response.setHeader(
+    "Set-Cookie",
+    `${therapistSessionCookie}=; Path=/api/therapist; HttpOnly; SameSite=Strict; Max-Age=0${secure}`,
+  );
+}
+
+function requireTherapistSession(request, response, next) {
+  if (getTherapistSessionExpiry(request)) return next();
+  response.status(401).json({ error: "Please sign in to view bookings." });
+}
+
+function allowLoginAttempt(request, response) {
+  const now = Date.now();
+  const attempt = loginAttempts.get(request.ip);
+  if (attempt && attempt.resetAt <= now) loginAttempts.delete(request.ip);
+  const current = loginAttempts.get(request.ip);
+  if (current && current.count >= 10) {
+    response.setHeader("Retry-After", Math.ceil((current.resetAt - now) / 1000));
+    response.status(429).json({ error: "Too many sign-in attempts. Please wait and try again." });
+    return false;
+  }
+  loginAttempts.set(request.ip, {
+    count: (current?.count || 0) + 1,
+    resetAt: current?.resetAt || now + 15 * 60 * 1000,
+  });
+  return true;
+}
+
 app.get("/api/health", async (_request, response) => {
   try {
     await pool.query("SELECT 1");
@@ -124,6 +209,99 @@ app.get("/api/config", (_request, response) => {
     whatsappEnabled: Boolean(config.whatsappNumber),
     paymentEnabled: Boolean(config.paymentUrl),
   });
+});
+
+app.get("/therapist", (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.sendFile(path.join(__dirname, "public", "therapist.html"));
+});
+
+app.post("/api/therapist/login", (request, response) => {
+  if (!config.therapistPassword) {
+    return response.status(503).json({ error: "Therapist dashboard password is not configured." });
+  }
+  if (!allowLoginAttempt(request, response)) return;
+
+  const password = request.body?.password;
+  if (typeof password !== "string" || password.length > 256) {
+    return response.status(400).json({ error: "Enter the dashboard password." });
+  }
+
+  const providedPasswordHash = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(password)
+    .digest();
+  const configuredPasswordHash = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(config.therapistPassword)
+    .digest();
+  if (!crypto.timingSafeEqual(providedPasswordHash, configuredPasswordHash)) {
+    return response.status(401).json({ error: "That password doesn’t match. Please try again." });
+  }
+
+  loginAttempts.delete(request.ip);
+  setTherapistSessionCookie(response);
+  response.json({ authenticated: true });
+});
+
+app.get("/api/therapist/session", (request, response) => {
+  if (!getTherapistSessionExpiry(request)) {
+    return response.status(401).json({ authenticated: false });
+  }
+  response.json({ authenticated: true });
+});
+
+app.post("/api/therapist/logout", requireTherapistSession, (_request, response) => {
+  clearTherapistSessionCookie(response);
+  response.status(204).end();
+});
+
+app.get("/api/therapist/bookings", requireTherapistSession, async (request, response) => {
+  const { date, view = "upcoming" } = request.query;
+  if (view !== "upcoming" && view !== "all") {
+    return response.status(400).json({ error: "Choose upcoming or all bookings." });
+  }
+  if (date !== undefined && (typeof date !== "string" || !isValidDate(date))) {
+    return response.status(400).json({ error: "Choose a valid date." });
+  }
+
+  const conditions = [];
+  const parameters = [];
+  if (date) {
+    parameters.push(date);
+    conditions.push(`session_date = $${parameters.length}::date`);
+  } else if (view === "upcoming") {
+    parameters.push(localDateTimeForZone(new Date()).date);
+    conditions.push(`session_date >= $${parameters.length}::date`);
+  }
+
+  parameters.push(100);
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const sortOrder = view === "all" && !date ? "DESC" : "ASC";
+  try {
+    const result = await pool.query(
+      `SELECT
+        id,
+        full_name AS "fullName",
+        phone,
+        email,
+        session_type AS "sessionType",
+        to_char(session_date, 'YYYY-MM-DD') AS date,
+        to_char(session_time, 'HH24:MI') AS time,
+        fee_amount AS fee,
+        currency,
+        created_at AS "createdAt"
+       FROM bookings
+       ${whereClause}
+       ORDER BY session_date ${sortOrder}, session_time ${sortOrder}
+       LIMIT $${parameters.length}`,
+      parameters,
+    );
+    response.json({ bookings: result.rows, limit: 100 });
+  } catch (error) {
+    console.error("Therapist booking lookup failed:", error);
+    response.status(500).json({ error: "Could not load bookings. Please try again." });
+  }
 });
 
 app.get("/api/availability", async (request, response) => {
@@ -241,6 +419,9 @@ app.post("/api/bookings", async (request, response) => {
 });
 
 async function start() {
+  if (config.therapistPassword && config.therapistPassword.length < 12) {
+    throw new Error("THERAPIST_PASSWORD must be at least 12 characters.");
+  }
   if (!Number.isInteger(config.fee) || config.fee <= 0) {
     throw new Error("SESSION_FEE must be a positive whole number.");
   }

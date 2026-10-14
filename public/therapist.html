@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#f7f8f3" />
+    <meta name="description" content="Private therapist booking dashboard." />
+    <title>Therapist dashboard | Stillpoint</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/therapist.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Stillpoint home">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span id="brand-name">Stillpoint</span>
+      </a>
+      <a class="topbar-link" href="/" id="public-site-link">Booking site <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main class="therapist-page">
+      <section class="therapist-login-card" id="login-view" hidden>
+        <div class="eyebrow"><span class="eyebrow-dot"></span> Therapist access</div>
+        <h1>Welcome back.</h1>
+        <p class="therapist-login-copy">Sign in to view the appointments booked with your practice.</p>
+        <form id="login-form">
+          <label class="field">
+            <span>Dashboard password</span>
+            <input
+              type="password"
+              name="password"
+              autocomplete="current-password"
+              minlength="12"
+              maxlength="256"
+              placeholder="Enter your password"
+              required
+            />
+          </label>
+          <div class="form-message" id="login-message" role="status" aria-live="polite"></div>
+          <button class="submit-button" type="submit" id="login-button">
+            <span>Sign in to dashboard</span><span aria-hidden="true">↗</span>
+          </button>
+        </form>
+        <div class="secure-note"><span aria-hidden="true">⌑</span> Booking details are visible only after sign-in.</div>
+      </section>
+
+      <section class="therapist-dashboard" id="dashboard-view" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-dot"></span> Therapist dashboard</div>
+            <h1>Your appointments.</h1>
+            <p>Booking details at a glance. Session information is shown in <strong id="dashboard-timezone">your practice time zone</strong>.</p>
+          </div>
+          <button class="signout-button" type="button" id="logout-button">Sign out <span aria-hidden="true">↗</span></button>
+        </div>
+
+        <div class="dashboard-overview">
+          <div class="overview-card">
+            <span class="overview-icon" aria-hidden="true">◷</span>
+            <div><span id="booking-count-label">Upcoming appointments</span><strong id="booking-count">—</strong></div>
+          </div>
+          <div class="overview-note"><span aria-hidden="true">⌑</span> Keep client details private and sign out when you’re finished.</div>
+        </div>
+
+        <div class="booking-list-panel">
+          <div class="booking-list-heading">
+            <div>
+              <h2>Appointments</h2>
+              <p id="results-description">Your upcoming sessions</p>
+            </div>
+            <label class="dashboard-date-field">
+              <span>Filter by date</span>
+              <input type="date" id="date-filter" aria-label="Filter bookings by date" />
+            </label>
+          </div>
+          <div class="dashboard-toolbar">
+            <div class="dashboard-tabs" role="group" aria-label="Booking range">
+              <button type="button" class="dashboard-tab active" data-view="upcoming" aria-pressed="true">Upcoming</button>
+              <button type="button" class="dashboard-tab" data-view="all" aria-pressed="false">All bookings</button>
+            </div>
+            <button type="button" class="refresh-button" id="refresh-button"><span aria-hidden="true">↻</span> Refresh</button>
+          </div>
+          <div class="dashboard-message" id="dashboard-message" role="status" aria-live="polite"></div>
+          <div class="booking-list" id="booking-list" aria-live="polite"></div>
+          <div class="dashboard-limit-note" id="dashboard-limit-note" hidden>Showing the latest 100 bookings. Use the date filter to find a specific day.</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a class="brand footer-brand" href="/"><span class="brand-mark" aria-hidden="true"><span></span></span><span id="footer-brand">Stillpoint</span></a>
+      <span>Private practice dashboard</span>
+      <span>© <span id="current-year"></span></span>
+    </footer>
+  </body>
+</html>

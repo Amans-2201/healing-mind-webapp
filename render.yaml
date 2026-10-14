@@ -49,3 +49,5 @@ services:
         value: "60"
       - key: PAYMENT_URL
         sync: false
+      - key: THERAPIST_PASSWORD
+        sync: false

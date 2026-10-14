@@ -19,6 +19,10 @@ Requirements: Node.js 20+ and PostgreSQL.
 
 The app creates its `bookings` table at startup. To change the displayed therapist, fee, or schedule, update the corresponding environment variables. `AVAILABLE_WEEKDAYS` uses Sunday = 0 through Saturday = 6.
 
+## Therapist dashboard
+
+Open `/therapist` and sign in with `THERAPIST_PASSWORD` to view saved bookings. Set a unique password of at least 12 characters in `.env` locally or in the Render service environment. For an existing Render deployment, add `THERAPIST_PASSWORD` under the web service's **Environment** settings and redeploy. The dashboard session is stored in a signed, HTTP-only, same-site cookie; booking details are only returned to an authenticated session. Sign out or close the browser when finished. The dashboard shows personal contact details, so use a strong password and do not share it.
+
 ## Payment
 
 Online payment is optional. Set `PAYMENT_URL` to a checkout/payment link to show the payment action after a booking. Leave it blank to hide that action. The URL can include `{bookingId}` and `{amount}` placeholders, which are replaced when the booking is created.
@@ -30,7 +34,8 @@ This app does not verify payment status or process card data. Use a provider-hos
 1. Push this folder to a GitHub repository.
 2. In Render, choose **New + → Blueprint**, connect the repository, and deploy the included `render.yaml`.
 3. Set `WHATSAPP_NUMBER` in the web service environment to the therapist's WhatsApp Business number, including country code. Set `PAYMENT_URL` if online payment is enabled.
-4. Wait for the deployment to become live, then test creating a booking and opening the WhatsApp message.
+4. Set a unique `THERAPIST_PASSWORD` (at least 12 characters) in the web service environment.
+5. Wait for the deployment to become live, then test creating a booking, opening the WhatsApp message, and signing in at `/therapist`.
 
 The Blueprint provisions a free web service and a free PostgreSQL database. Render's free Postgres instances are intended for testing and expire after 30 days; do not use this configuration for production or store sensitive health information. The booking form intentionally does not request therapy notes or health details.
 
@@ -52,6 +57,7 @@ The Blueprint provisions a free web service and a free PostgreSQL database. Rend
 | `DAILY_START_TIME` / `DAILY_END_TIME` | Daily availability window (`HH:MM`) | `09:00` / `17:00` |
 | `SLOT_INTERVAL_MINUTES` | Minutes between offered start times | `60` |
 | `PAYMENT_URL` | Optional external checkout URL | Hidden |
+| `THERAPIST_PASSWORD` | Password for the private therapist dashboard (minimum 12 characters) | Not configured |
 
 ## API
 
