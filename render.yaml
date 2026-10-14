@@ -1,0 +1,51 @@
+databases:
+  - name: healing-mind-db
+    databaseName: healing_mind
+    user: healing_mind
+    plan: free
+
+services:
+  - type: web
+    name: healing-mind-webapp
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: healing-mind-db
+          property: connectionString
+      - key: BUSINESS_NAME
+        value: Stillpoint
+      - key: THERAPIST_NAME
+        value: Your therapist
+      - key: THERAPIST_TITLE
+        value: Psychotherapist
+      - key: THERAPIST_CREDENTIALS
+        value: A supportive space for you
+      - key: THERAPIST_BIO
+        value: A calm, confidential space to understand yourself and find a way forward.
+      - key: WHATSAPP_NUMBER
+        sync: false
+      - key: SESSION_FEE
+        value: "1800"
+      - key: CURRENCY
+        value: INR
+      - key: SESSION_DURATION_MINUTES
+        value: "50"
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: AVAILABLE_WEEKDAYS
+        value: 1,2,3,4,5,6
+      - key: DAILY_START_TIME
+        value: "09:00"
+      - key: DAILY_END_TIME
+        value: "17:00"
+      - key: SLOT_INTERVAL_MINUTES
+        value: "60"
+      - key: PAYMENT_URL
+        sync: false
